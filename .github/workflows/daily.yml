@@ -1,0 +1,43 @@
+name: Frase diaria de ingles
+
+on:
+  schedule:
+    - cron: "0 11 * * *"   # 11:00 UTC = 08:00 em Brasília
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install -r requirements.txt
+
+      # 1) gera imagem + áudio + legenda do dia em media/AAAA-MM-DD/
+      - run: python send_daily.py --prepare
+        env:
+          START_DATE: "2026-11-05"
+
+      # 2) publica os arquivos no repositório público
+      - name: Commit da midia
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add media
+          git commit -m "midia do dia" || echo "nada para commitar"
+          git push
+          echo "MEDIA_BASE_URL=https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@$(git rev-parse HEAD)/media" >> "$GITHUB_ENV"
+
+      # 3) envia pelo Twilio, usando os links públicos (jsDelivr)
+      - run: python send_daily.py --send-only
+        env:
+          TWILIO_SID: ${{ secrets.TWILIO_SID }}
+          TWILIO_TOKEN: ${{ secrets.TWILIO_TOKEN }}
+          WA_TO: ${{ secrets.WA_TO }}
+          START_DATE: "2026-11-05"
